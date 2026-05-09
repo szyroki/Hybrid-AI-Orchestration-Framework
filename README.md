@@ -207,7 +207,7 @@ Auditability is built in at every layer: n8n logs workflow execution, MCP provid
 
 ## Open Questions (pending concrete use case)
 - Token threshold for delegation — 300 tokens is a starting estimate, needs calibration
-- OpenBrain knowledge structure for the specific domain — what gets stored, how it's chunked, what metadata is tagged
+- OpenBrain knowledge structure for the specific domain — what content gets stored, what metadata is tagged; verify chunking behaviour against the actual content types used
 - Does the target Local Model support tool use? (affects complexity of local execution)
 - Remote kill switch — how to halt a runaway run from any device
 - Redaction Map storage: resolved — RAM-disk in all phases (see Section 6, Step 2c)
