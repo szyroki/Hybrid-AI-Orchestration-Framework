@@ -93,49 +93,50 @@ n8n Workflow Engine
 ## 4. Connectivity Standard — MCP
 
 - **Standard:** Model Context Protocol (MCP)
-- **Role:** Standardised interface between Frontier Models and local data sources (file systems, databases, project Wiki)
+- **Role:** Standardised interface between Frontier Models and local data sources (file systems, databases, memory layer)
 - **Benefit:** Secure, auditable data access without brittle custom integration code
 - **Deployment:** MCP Servers expose local resources to the AI layer in a controlled, queryable way
 
 ---
 
-## 5. State Management — The Wiki
+## 5. State Management — OpenBrain
 
-- **Medium:** Markdown-based project Wiki (local, Git version-controlled — see Section 5a)
-- **Role:** Single Source of Truth for project state — replaces reliance on model context windows or volatile memory
-- **Write discipline:** Frontier Model (or orchestrator) writes; Local Models read only
-- **Contents:**
-  - Glossaries and terminology
-  - Domain-specific rulesets and operating constraints
-  - Workflow checkpoints and current status
-  - Decisions and rationale log
-- **Context injection:** n8n/MCP specifies which memory content is injected into each model call — keeps prompts self-contained
-- **Context window guard:** As the Wiki grows, full injection becomes impractical. A semantic search / embedding layer must be introduced before that point, ensuring only relevant snippets are sent per call. See Open Questions and Section 5b
+**Single Source of Truth principle:** all project state lives in one persistent memory layer — not in model context windows or volatile memory. The Frontier Model (or orchestrator) writes; Local Models read only via MCP.
 
-## 5a. Wiki Version Control — Git
+OpenBrain is the memory layer: an open-source system built on SQLite or PostgreSQL + pgvector, with an MCP server built in.
 
-- **Purpose:** Makes write discipline enforceable and auditable rather than a convention; provides clean rollback without manual reconstruction
-- **Trigger:** n8n commits to the Wiki automatically at defined workflow checkpoints — not model-initiated
-- **Branching strategy:** Each operator works on their own named branch. Runs are committed to that branch as they complete. Merge to `main` only after HITL sign-off. Manual conflict resolution if branches diverge — sufficient for current scale, mitigated by Postgres migration when concurrency becomes a real problem (see Section 5b)
-- **Revert as Stop Gate action:** If HITL rejects an output, n8n automatically reverts the Wiki branch to pre-run state before halting. The process log is explicitly excluded from reversion — it must record that the run occurred and was rejected. Process log entries are append-only
-- **Collision protection:** Git branching per run prevents concurrent overwrites. Sufficient for low-concurrency usage — high-concurrency multi-user environments will require a database backend (see Section 5b)
-- **Commit attribution:** Currently moot — Frontier Model is the sole writer. When/if multi-model writing is introduced, each agent gets its own Git committer identity so the log shows exactly which model wrote what and when. Architecture is ready for this without redesign
+**Core design principle — source/embedding separation:** raw source data and vector embeddings live in separate tables. When a better embedding model ships, the index rebuilds without touching source data. The memory layer is upgrade-safe as the model landscape evolves.
 
-## 5b. Storage Evolution — Phased Approach
+**Privacy:** embeddings are generated locally via any OpenAI-compatible local inference runtime (see Section 2) — documents never leave the machine during indexing. Consistent with the Clean Room Pipeline (Section 6).
 
-Markdown + Git is the starting point. Migration is driven by operational need, not a fixed timeline.
+**Context injection:** n8n/MCP specifies which memory content is injected into each model call. OpenBrain's semantic search ensures only relevant records are sent per call, keeping prompts self-contained regardless of knowledge base size.
 
-| Phase | Storage | Trigger to move on |
-|---|---|---|
-| 1 — current | Markdown + Git | Works until concurrency or relational complexity becomes painful |
-| 2 — optional bridge | Airtable | Multiple simultaneous users; need to inspect/edit records without SQL knowledge. Adds vendor dependency — skip if possible |
-| 3 — target | PostgreSQL | Team comfortable with SQL basics; concurrency is a real problem; relational data (e.g. Customer → Product → Transaction) justifies the complexity |
+The backend scales in two phases, driven by operational need:
 
-**Hybrid model (Phase 3):** PostgreSQL as the master record store. n8n automatically exports relevant records as Markdown strings before injecting them into model calls — Postgres on the backend, Markdown as the AI-facing interface.
+- **Phase 1 — SQLite (default start):** single local file, no infrastructure overhead, MCP-ready from day one. Semantic search via sqlite-vec is available immediately — no separate embedding layer to add later. Move on when concurrent write contention or dataset size becomes a real problem.
+- **Phase 2 — PostgreSQL (scale):** same tool, upgraded backend. Migration is handled within OpenBrain — source data untouched, only the embedding index rebuilt. Handles concurrency, larger knowledge bases, and the `anonymization_log` TTL table for process log metadata (see Section 6).
 
-**Redaction Map upgrade (Phase 3):** The process log metadata (job ID, document reference, creation and destruction timestamps) moves to a dedicated `anonymization_log` table in Postgres with a TTL (Time To Live) — stronger privacy guarantee, no manual cleanup. The Redaction Map itself remains RAM-disk only in all phases.
+## 5a. Lightweight Variant — Markdown Wiki + Git
 
-**Semantic search (Phase 3 or later):** PostgreSQL with the `pgvector` extension stores embeddings alongside text records. The AI navigates the knowledge base by semantic similarity rather than keyword match — relevant for large-scale deployments, not current scope.
+For simpler processes where state is limited, predictable, and managed by a single operator, a Markdown-based Wiki under local Git version control is sufficient — no embedding model, no database, no external service.
+
+**When to use this instead of OpenBrain:**
+- Single operator (no concurrent write contention)
+- Context injection is predictable — n8n knows which pages to send per workflow step without needing semantic search
+- Knowledge base is small enough that full or near-full injection per call is practical
+- Minimising external dependencies is a priority
+
+**Wiki contents:** same categories as OpenBrain — glossaries, domain-specific rulesets, workflow checkpoints, decisions and rationale log — but stored as plain Markdown files, human-readable without tooling.
+
+**Context injection:** n8n/MCP specifies which Wiki pages are injected into each model call explicitly. No semantic retrieval layer — what gets sent is determined by workflow logic, not similarity search.
+
+**Git discipline:**
+- n8n commits automatically at defined workflow checkpoints — not model-initiated
+- Each operator works on their own named branch; merge to `main` only after HITL sign-off
+- If HITL rejects an output, n8n reverts the branch to pre-run state; the process log is excluded from reversion and remains append-only
+- Git branching per run prevents concurrent overwrites — sufficient for single-operator use
+
+**When to choose OpenBrain instead:** if the project scope already suggests a large or growing knowledge base, semantic retrieval, or multiple operators — start with OpenBrain from day one rather than migrating later. Migration from Wiki + Git to OpenBrain is possible if scope changes, but accurate scoping at the onset is the better investment.
 
 ---
 
@@ -200,16 +201,15 @@ n8n gates evaluate task complexity before routing. Delegation to Local Model onl
 
 The architecture is fully **model-agnostic** — no dependency on a specific provider or model version. Frontier and Local model slots can be swapped as better or cheaper models emerge without redesigning the pipeline.
 
-Auditability is built in at every layer: n8n logs workflow execution, MCP provides auditable data access, the Wiki maintains decision history, and the Redaction Map process is traceable via a dedicated process log — recording job ID, document reference, and destruction timestamp without retaining any PII values. The map itself is vaporised; the proof that it was handled correctly is not.
+Auditability is built in at every layer: n8n logs workflow execution, MCP provides auditable data access, the memory layer maintains decision history and knowledge state (with full provenance tracking in OpenBrain, or Git commit history in the Wiki+Git variant), and the Redaction Map process is traceable via a dedicated process log — recording job ID, document reference, and destruction timestamp without retaining any PII values. The map itself is vaporised; the proof that it was handled correctly is not.
 
 ---
 
 ## Open Questions (pending concrete use case)
 - Token threshold for delegation — 300 tokens is a starting estimate, needs calibration
-- Wiki structure for the specific domain
+- OpenBrain knowledge structure for the specific domain — what gets stored, how it's chunked, what metadata is tagged
 - Does the target Local Model support tool use? (affects complexity of local execution)
 - Remote kill switch — how to halt a runaway run from any device
 - Redaction Map storage: resolved — RAM-disk in all phases (see Section 6, Step 2c)
-- Process log metadata retention and rotation policy: moves to Postgres `anonymization_log` table with TTL in Phase 3 (see Section 5b)
-- Embedding layer / semantic search implementation — which tool, at what Wiki size does it become necessary
-- Airtable evaluation — determine early whether the team can skip straight to Postgres or needs the intermediate step
+- Process log metadata retention: resolved — `anonymization_log` table with TTL in Phase 2 (see Section 5)
+- Local embedding model selection — which model and runtime, benchmarked against the specific domain content
