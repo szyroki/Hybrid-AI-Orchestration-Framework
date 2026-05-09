@@ -210,6 +210,4 @@ Auditability is built in at every layer: n8n logs workflow execution, MCP provid
 - OpenBrain knowledge structure for the specific domain — what content gets stored, what metadata is tagged; verify chunking behaviour against the actual content types used
 - Does the target Local Model support tool use? (affects complexity of local execution)
 - Remote kill switch — how to halt a runaway run from any device
-- Redaction Map storage: resolved — RAM-disk in all phases (see Section 6, Step 2c)
-- Process log metadata retention: resolved — `anonymization_log` table with TTL in Phase 2 (see Section 5)
 - Local embedding model selection — which model and runtime, benchmarked against the specific domain content
