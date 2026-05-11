@@ -114,7 +114,7 @@ OpenBrain is the memory layer: an open-source system built on SQLite or PostgreS
 The backend scales in two phases, driven by operational need:
 
 - **Phase 1 — SQLite (default start):** single local file, no infrastructure overhead, MCP-ready from day one. Semantic search via sqlite-vec is available immediately — no separate embedding layer to add later. Move on when concurrent write contention or dataset size becomes a real problem.
-- **Phase 2 — PostgreSQL (scale):** same tool, upgraded backend. Migration is handled within OpenBrain — source data untouched, only the embedding index rebuilt. Handles concurrency, larger knowledge bases, and the `anonymization_log` TTL table for process log metadata (see Section 6).
+- **Phase 2 — PostgreSQL (scale):** same tool, upgraded backend. Migration is handled within OpenBrain — source data untouched, only the embedding index rebuilt. Handles concurrency and larger knowledge bases. Process log TTL enforcement becomes automatic via the `anonymization_log` Postgres table (see Section 6).
 
 ## 5a. Lightweight Variant — Markdown Wiki + Git
 
@@ -133,7 +133,7 @@ For simpler processes where state is limited, predictable, and managed by a sing
 **Git discipline:**
 - n8n commits automatically at defined workflow checkpoints — not model-initiated
 - Each operator works on their own named branch; merge to `main` only after HITL sign-off
-- If HITL rejects an output, n8n reverts the branch to pre-run state; the process log is excluded from reversion and remains append-only
+- If HITL rejects an output, n8n reverts the branch to pre-run state; the process log (an append-only file in the repo) is excluded from reversion — it must record that the run occurred and was rejected
 - Git branching per run prevents concurrent overwrites — sufficient for single-operator use
 
 **When to choose OpenBrain instead:** if the project scope already suggests a large or growing knowledge base, semantic retrieval, or multiple operators — start with OpenBrain from day one rather than migrating later. Migration from Wiki + Git to OpenBrain is possible if scope changes, but accurate scoping at the onset is the better investment.
@@ -151,7 +151,7 @@ Designed for enterprise environments where PII must never reach cloud infrastruc
    - **2a. Identification:** Local Model identifies all PII entities in the document
    - **2b. Map generation:** n8n generates a **Redaction Map** — a temporary, local-only JSON lookup table mapping unique placeholder tokens (e.g. `{{ENTITY_01}}`) to real values. Sensitive data replaced with tokens before leaving the local environment
    - **2c. Storage:** The Redaction Map is stored exclusively in a RAM-disk or encrypted temp folder — it never touches persistent storage and is vaporised automatically when the process ends or the machine loses power. No forensic recovery is possible. The map must remain live in RAM for the duration of the entire job — from Step 2 through Step 5 (re-constitution). If the process is interrupted before re-constitution completes, the job must be restarted from ingestion
-   - **2d. Process log:** A separate **process log** records metadata only (job ID, document reference, timestamp of map creation, timestamp of destruction) — no PII values. Proves the process ran correctly without retaining sensitive data. In Phase 2 (OpenBrain + PostgreSQL), this moves to a dedicated `anonymization_log` table with a TTL (Time To Live) — entries are automatically purged after a defined retention period, removing the need for manual cleanup
+   - **2d. Process log:** A separate **process log** records metadata only (job ID, document reference, timestamp of map creation, timestamp of destruction) — no PII values. Its purpose is to prove the process ran correctly without retaining any sensitive data. The process log is permanent and append-only; it is never vaporised alongside the Redaction Map. Where it is stored depends on the chosen memory solution (Section 5): a SQLite table (OpenBrain Phase 1), a dedicated `anonymization_log` Postgres table (OpenBrain Phase 2), or an append-only file tracked in Git (Wiki+Git variant). Regardless of storage medium, a retention policy applies — entries should be purged after the required compliance period. In OpenBrain Phase 2 this is automated via TTL; in SQLite and Wiki+Git it requires a periodic manual or scripted cleanup
 3. **Cloud Processing (Frontier Model):** Receives anonymised text with tokens only. Treats `{{ENTITY_01}}` as constant variables in its reasoning. Has zero access to underlying identity data
 4. **Synthesis returned (Frontier Model → local):** Output contains tokens, not real values
 5. **Re-constitution (deterministic script):** A deterministic string replacement script uses the local Redaction Map to swap placeholders back to original values. **No model inference involved** — 100% fidelity guaranteed.
