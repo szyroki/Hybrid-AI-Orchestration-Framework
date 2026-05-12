@@ -180,13 +180,13 @@ What gets recorded:
 
 What is explicitly not recorded: prompt content, model responses, or document content. Full content logging would potentially store PII or sensitive business content outside Clean Room protection, creating a compliance liability where none existed. Decision-level logging answers the questions that matter in practice — what routing decision was made, which gate fired, did a human approve or reject — without retaining the underlying content.
 
-### Debug mode — full logging
+### Rolling diagnostic layer — full logging
 
-A toggleable operational mode for development and early production. Captures full prompt and response content to catch unexpected behaviour, calibrate routing thresholds, and verify the Clean Room step is working correctly. Not a permanent architecture choice.
+A permanent 72-hour rolling window running alongside the decision-level log in all environments including production. Captures full prompt and response content for incident investigation and routing calibration — available whenever something breaks, without needing to be activated in advance.
 
-- Off by default in production — activated explicitly
-- 72-hour auto-purge — entries deleted automatically after the retention window closes
-- Scope is time-limited: development phase and incident investigation only
+- Always on — no manual activation required
+- Post-anonymisation content only — prompts and responses contain tokens (`{{ENTITY_01}}`), not real values. Pre-anonymisation content is never captured; the risk/reward ratio does not justify it
+- 72-hour auto-purge — entries deleted automatically as the window rolls forward; no manual cleanup required
 
 ---
 
