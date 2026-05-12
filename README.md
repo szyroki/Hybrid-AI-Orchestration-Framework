@@ -250,3 +250,9 @@ Auditability is built in at every layer: n8n logs workflow execution, MCP provid
 - Does the target Local Model support tool use? (affects complexity of local execution)
 - Remote kill switch — how to halt a runaway run from any device
 - Local embedding model selection — which model and runtime, benchmarked against the specific domain content
+- Error handling and retry logic — what happens when a model call fails, times out, or returns a malformed response; retry with backoff, halt, or alert?
+- Model failover — if the primary Frontier Model provider is unavailable, does the pipeline fall back to an alternative provider or halt?
+- Operator access control — authentication and authorisation at the n8n workflow level; who can trigger the pipeline and with what scope
+- Monitoring and alerting — alert thresholds, notification routing, and on-call behaviour beyond what the log captures
+- Cost controls — hard budget limits and spend monitoring alongside Token ROI routing; preventing runaway API costs
+- Input validation — handling of malformed inputs, unsupported formats, or oversized documents before they reach the Clean Room gate
