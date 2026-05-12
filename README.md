@@ -49,13 +49,13 @@ n8n Workflow Engine
     │
     ▼
 [Clean Room Gate] — Local Model identifies PII → Redaction Map generated → stored to RAM-disk
-                  — document anonymised (tokens replace PII) before any cloud contact
+                  — document anonymised (tokens replace PII) before any cloud contact  [→ log]
     │
-    ├─ [Token ROI Gate] ──COMPLEX──► Frontier Model (planner/reasoner)
+    ├─ [Token ROI Gate] ──COMPLEX──► Frontier Model (planner/reasoner)  [→ log]
     │                                       │
     │                                       ├─ Handles directly
     │                                       │
-    │                                       └─ [Delegate condition met]
+    │                                       └─ [Delegate condition met]  [→ log]
     │                                           └─ tool call: run_local(prompt, context_pages[])
     │                                                   │
     │                                                   ▼
@@ -68,19 +68,19 @@ n8n Workflow Engine
     │                                                   ▼
     │                                            Result returned to Frontier ◄─┐
     │                                                                           │
-    └─ [Token ROI Gate] ──SIMPLE───► Local Model (Caveman format) ─────────────┘
+    └─ [Token ROI Gate] ──SIMPLE───► Local Model (Caveman format) ─────────────┘  [→ log]
     │
     ▼
 [Re-constitution] — deterministic script swaps tokens → original values restored
                   — Redaction Map vaporised from RAM-disk
     │
     ▼
-[Irreversible action?] ──YES──► PAUSE → Human confirmation (HITL) → proceed/abort
+[Irreversible action?] ──YES──► PAUSE → Human confirmation (HITL) → proceed/abort  [→ log]
          │
         NO
          │
          ▼
-    [Data Validation Gate] ── schema check on output ──FAIL──► flag / retry
+    [Data Validation Gate] ── schema check on output ──FAIL──► flag / retry  [→ log]
          │
         PASS
          │
