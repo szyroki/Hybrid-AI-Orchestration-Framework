@@ -184,7 +184,7 @@ What is explicitly not recorded: prompt content, model responses, or document co
 
 A permanent 72-hour rolling window running alongside the decision-level log in all environments including production. Captures full prompt and response content for incident investigation and routing calibration — available whenever something breaks, without needing to be activated in advance.
 
-- Post-anonymisation content only — prompts and responses contain tokens (`{{ENTITY_01}}`), not real values. Pre-anonymisation content is never captured; the risk/reward ratio does not justify it
+- Post-anonymisation content only — prompts and responses contain tokens (`{{ENTITY_01}}`), not real values. Pre-anonymisation content is never captured; the risk/reward ratio does not justify it. Implementation must enforce this at the pipeline level — the logger should be positioned after the Clean Room gate, not as a policy dependent on correct configuration
 - 72-hour auto-purge — entries deleted automatically as the window rolls forward; no manual cleanup required
 
 ---
