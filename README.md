@@ -27,7 +27,7 @@
 ### B. Local / Cheaper Models — On-Premise Muscle
 - **Engine:** Ollama or vLLM (GPU nodes) / LM Studio (dev/lighter use cases) — choice depends on deployment context
 - **Role:** High-volume tasks — PII identification, classification, basic summarisation, formatting, bulk text generation
-- **Output format:** Caveman Format (see Section 7) — ultra-concise, no filler, technical substance only
+- **Output format:** Caveman Format (see Section 8) — ultra-concise, no filler, technical substance only
 
 ### Delegation Trigger — The Heuristic
 Route to Local Model only when **all three** conditions are met:
@@ -151,7 +151,7 @@ Designed for enterprise environments where PII must never reach cloud infrastruc
    - **2a. Identification:** Local Model identifies all PII entities in the document
    - **2b. Map generation:** n8n generates a **Redaction Map** — a temporary, local-only JSON lookup table mapping unique placeholder tokens (e.g. `{{ENTITY_01}}`) to real values. Sensitive data replaced with tokens before leaving the local environment
    - **2c. Storage:** The Redaction Map is stored exclusively in a RAM-disk or encrypted temp folder — it never touches persistent storage and is vaporised automatically when the process ends or the machine loses power. No forensic recovery is possible. The map must remain live in RAM for the duration of the entire job — from Step 2 through Step 5 (re-constitution). If the process is interrupted before re-constitution completes, the job must be restarted from ingestion
-   - **2d. Process log:** A separate **process log** records metadata only (job ID, document reference, timestamp of map creation, timestamp of destruction) — no PII values. Its purpose is to prove the process ran correctly without retaining any sensitive data. The process log is permanent and append-only; it is never vaporised alongside the Redaction Map. Where it is stored depends on the chosen memory solution (Section 5): a SQLite table (OpenBrain Phase 1), a dedicated `anonymization_log` Postgres table (OpenBrain Phase 2), or an append-only file tracked in Git (Wiki+Git variant). Regardless of storage medium, a retention policy applies — entries should be purged after the required compliance period. In OpenBrain Phase 2 this is automated via TTL; in SQLite and Wiki+Git it requires a periodic cleanup script
+   - **2d. Process log:** A Clean Room event is written to the system log for each job — job ID, document reference, timestamps of map creation and destruction, no PII values. See Section 7
 3. **Cloud Processing (Frontier Model):** Receives anonymised text with tokens only. Treats `{{ENTITY_01}}` as constant variables in its reasoning. Has zero access to underlying identity data
 4. **Synthesis returned (Frontier Model → local):** Output contains tokens, not real values
 5. **Re-constitution (deterministic script):** A deterministic string replacement script uses the local Redaction Map to swap placeholders back to original values. **No model inference involved** — 100% fidelity guaranteed.
@@ -161,7 +161,36 @@ Designed for enterprise environments where PII must never reach cloud infrastruc
 
 ---
 
-## 7. Optimisation Protocols
+## 7. System Logging
+
+The system maintains an immutable, append-only log of all decision-level events — separate from state management (Section 5/5a) and independent of n8n's native logging. State records where the project is; the log records what the system did to get there.
+
+**Storage:** a flat append-only file (JSON or plain text). Human-readable without tooling, trivial to grep or export, and portable across all deployment variants. Neither the Frontier Model nor n8n may overwrite or delete entries — only append.
+
+**Applies to:** both OpenBrain and Wiki+Git deployments. Logging is orthogonal to state management.
+
+### Permanent layer — decision-level logging
+
+What gets recorded:
+- Token ROI gate decisions — which model was selected, which routing condition triggered it
+- Gate outcomes — which gate fired, pass or fail
+- HITL events — approved or rejected, timestamp, job reference
+- Model delegation triggers — when and why the Frontier Model delegated to Local
+- Clean Room events — job ID, document reference, timestamps of map creation and destruction (an instance of the same pattern, described in Section 6)
+
+What is explicitly not recorded: prompt content, model responses, or document content. Full content logging would potentially store PII or sensitive business content outside Clean Room protection, creating a compliance liability where none existed. Decision-level logging answers the questions that matter in practice — what routing decision was made, which gate fired, did a human approve or reject — without retaining the underlying content.
+
+### Debug mode — full logging
+
+A toggleable operational mode for development and early production. Captures full prompt and response content to catch unexpected behaviour, calibrate routing thresholds, and verify the Clean Room step is working correctly. Not a permanent architecture choice.
+
+- Off by default in production — activated explicitly
+- 72-hour auto-purge — entries deleted automatically after the retention window closes
+- Scope is time-limited: development phase and incident investigation only
+
+---
+
+## 8. Optimisation Protocols
 
 ### Caveman Format
 Local Model returns output in compressed English — no articles, no filler, no pleasantries. Core meaning only.
@@ -179,7 +208,7 @@ n8n gates evaluate task complexity before routing. Delegation to Local Model onl
 
 ---
 
-## 8. Safety Architecture
+## 9. Safety Architecture
 
 | Action type | Gate |
 |---|---|
@@ -197,7 +226,7 @@ n8n gates evaluate task complexity before routing. Delegation to Local Model onl
 
 ---
 
-## 9. Key System Differentiator
+## 10. Key System Differentiator
 
 The architecture is fully **model-agnostic** — no dependency on a specific provider or model version. Frontier and Local model slots can be swapped as better or cheaper models emerge without redesigning the pipeline.
 
