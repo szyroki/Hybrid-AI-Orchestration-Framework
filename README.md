@@ -107,7 +107,7 @@ OpenBrain is the memory layer: an open-source system built on SQLite or PostgreS
 
 **Core design principle — source/embedding separation:** raw source data and vector embeddings live in separate tables. When a better embedding model ships, the index rebuilds without touching source data. The memory layer is upgrade-safe as the model landscape evolves.
 
-**Privacy:** embeddings are generated locally via any OpenAI-compatible local inference runtime (see Section 2) — documents never leave the machine during indexing. Consistent with the Clean Room Pipeline (Section 6).
+**Privacy:** embeddings are generated locally via any OpenAI-compatible local inference runtime (see Section 2) — documents never leave the machine during indexing. Consistent with the Clean Room Pipeline (Section 6A).
 
 **Context injection:** n8n/MCP specifies which memory content is injected into each model call. OpenBrain's semantic search ensures only relevant records are sent per call, keeping prompts self-contained regardless of knowledge base size.
 
@@ -140,7 +140,9 @@ For simpler processes where state is limited, predictable, and managed by a sing
 
 ---
 
-## 6. Security & Privacy — The Clean Room Pipeline
+## 6. Security & Privacy
+
+### A. The Clean Room Pipeline
 
 Designed for enterprise environments where PII must never reach cloud infrastructure.
 
@@ -158,6 +160,15 @@ Designed for enterprise environments where PII must never reach cloud infrastruc
 6. **HITL sign-off:** Human reviews the reconstituted document before release
 
 > The Brain (Cloud) stays blind to PII. The Muscle (Local/Orchestrator) ensures the final document is accurate and complete.
+
+### B. API Key Management
+
+No hardcoded credentials anywhere in the system — not in n8n workflows, not in prompts, not in configuration files. API keys for Frontier Model providers (Azure OpenAI, Anthropic, Google Vertex AI, AWS Bedrock) are treated as secrets and managed accordingly.
+
+- **Secret vault:** keys are stored in a dedicated secret management system (HashiCorp Vault, AWS Secrets Manager, or equivalent). n8n retrieves credentials at runtime — keys are never embedded in workflow definitions
+- **Scoped keys:** each provider gets a dedicated key with minimum required permissions. A key scoped to one provider cannot access another
+- **Key rotation:** keys are rotated on a defined schedule and immediately on any suspected exposure. Rotation is handled at the vault level — no workflow changes required
+- **No logging of keys:** the rolling diagnostic layer (Section 7) must never capture authorisation headers or credential values
 
 ---
 
